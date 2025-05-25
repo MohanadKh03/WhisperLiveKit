@@ -354,6 +354,20 @@ class AudioProcessor:
         logger.info("Diarization processor task finished.")
 
 
+    async def start_generating_speech(self, new_text):
+        """Start generating speech for the given lines."""
+        if not new_text:
+            return
+        
+        # This is a placeholder for actual speech generation logic
+        # In a real implementation, this would interface with a TTS system
+        
+        # Simulate speech generation delay
+        await asyncio.sleep(0.1)
+        
+        logger.info(f"Generating speech for {len(new_text)} lines.")
+        return new_text  # Yield the generated speech text
+
     async def results_formatter(self):
         """Format processing results for output."""
         while True:

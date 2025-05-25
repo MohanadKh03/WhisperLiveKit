@@ -39,10 +39,13 @@ async def get():
     return HTMLResponse(kit.web_interface())
 
 
-async def handle_websocket_results(websocket, results_generator):
+async def handle_websocket_results(websocket, results_generator, audio_processor):
     """Consumes results from the audio processor and sends them via WebSocket."""
     try:
         async for response in results_generator:
+            logger.info(f"Received response from results generator: {response}")
+            logger.info(f"Sending generate tts stuff to client")
+            asyncio.create_task(handle_tts_websocket_results(websocket=websocket, new_text=response["buffer_transcription"], audio_processor=audio_processor))
             await websocket.send_json(response)
         # when the results_generator finishes it means all audio has been processed
         logger.info("Results generator finished. Sending 'ready_to_stop' to client.")
@@ -52,6 +55,18 @@ async def handle_websocket_results(websocket, results_generator):
     except Exception as e:
         logger.warning(f"Error in WebSocket results handler: {e}")
 
+async def handle_tts_websocket_results(websocket, new_text, audio_processor):
+    """Consumes results from the audio processor and sends them via WebSocket."""
+    try:
+        tts_output = await audio_processor.start_generating_speech(new_text)
+        logger.info(f"Sending TTS text to client: {tts_output}")
+        await websocket.send_json({"event_type": "tts", "speech": tts_output})
+        # when the results_generator finishes it means all audio has been processed
+        logger.info("TTS Generated successfully")
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected while handling results (client likely closed connection).")
+    except Exception as e:
+        logger.warning(f"Error in WebSocket results handler: {e}")
 
 @app.websocket("/asr")
 async def websocket_endpoint(websocket: WebSocket):
@@ -61,7 +76,7 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.info("WebSocket connection opened.")
             
     results_generator = await audio_processor.create_tasks()
-    websocket_task = asyncio.create_task(handle_websocket_results(websocket, results_generator))
+    websocket_task = asyncio.create_task(handle_websocket_results(websocket, results_generator, audio_processor))
 
     try:
         while True:
