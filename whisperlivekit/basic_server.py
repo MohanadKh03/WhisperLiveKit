@@ -59,9 +59,9 @@ async def handle_tts_websocket_results(websocket, new_text, audio_processor):
     """Consumes results from the audio processor and sends them via WebSocket."""
     try:
         tts_output = await audio_processor.start_generating_speech(new_text)
-        logger.info(f"Sending TTS text to client: {tts_output}")
+        logger.info(f"Sending TTS text to client:")
         await websocket.send_json({"event_type": "tts", "speech": tts_output})
-        # when the results_generator finishes it means all audio has been processed
+        
         logger.info("TTS Generated successfully")
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected while handling results (client likely closed connection).")

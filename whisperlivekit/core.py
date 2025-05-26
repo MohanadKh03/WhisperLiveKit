@@ -4,6 +4,12 @@ except ImportError:
     from .whisper_streaming_custom.whisper_online import backend_factory, warmup_asr
 from argparse import Namespace, ArgumentParser
 
+import os
+import torch
+import torchaudio
+from TTS.tts.configs.xtts_config import XttsConfig
+from TTS.tts.models.xtts import Xtts
+
 def parse_args():
     parser = ArgumentParser(description="Whisper FastAPI Online Server")
     parser.add_argument(
@@ -146,7 +152,15 @@ def parse_args():
 class WhisperLiveKit:
     _instance = None
     _initialized = False
-    
+
+    OUT_PATH = '../'
+
+    XTTS_MODEL_CONFIG = OUT_PATH + "XTTS_model_files/config.json"
+    XTTS_MODEL_PTH = OUT_PATH + "XTTS_model_files/model.pth"
+    XTTS_MODEL_VOCAB = OUT_PATH + "XTTS_model_files/vocab.json"
+    XTTS_SPEAKERS_PATH = OUT_PATH + "XTTS_model_files/speakers_xtts.pth"
+    AUDIO_REFERENCE_PATH = OUT_PATH + "mohanad.wav"
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -173,8 +187,47 @@ class WhisperLiveKit:
         if self.args.diarization:
             from whisperlivekit.diarization.diarization_online import DiartDiarization
             self.diarization = DiartDiarization()
-            
+        
+        self.install_xtts_model()
+
         WhisperLiveKit._initialized = True
+
+    def install_xtts_model(self):
+        
+        from TTS.utils.manage import ModelManager
+
+        import os
+
+        # # Define the path where XTTS v2.0.1 files will be downloaded
+        CHECKPOINTS_OUT_PATH = os.path.join(self.OUT_PATH, "XTTS_model_files/")
+        os.makedirs(CHECKPOINTS_OUT_PATH, exist_ok=True)
+
+        # Download XTTS v2.0 checkpoint if needed
+        TOKENIZER_FILE_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/vocab.json"
+        XTTS_CHECKPOINT_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/model.pth"
+        XTTS_SPEAKERS_PATH_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/speakers_xtts.pth"
+        XTTS_CONFIG_PATH_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/config.json"
+
+        # download XTTS v2.0 files if needed
+
+        ModelManager._download_model_files(
+            [TOKENIZER_FILE_LINK, XTTS_CHECKPOINT_LINK, XTTS_SPEAKERS_PATH_LINK, XTTS_CONFIG_PATH_LINK], CHECKPOINTS_OUT_PATH, progress_bar=False
+        )
+
+        
+        print("Loading XTTS model...")
+        self.xtts_config = XttsConfig()
+        self.xtts_config.load_json(self.XTTS_MODEL_CONFIG)
+        self.xtts_model = Xtts.init_from_config(self.xtts_config)
+
+
+        self.xtts_model.load_checkpoint(self.xtts_config, checkpoint_path=self.XTTS_MODEL_PTH,
+                              vocab_path=self.XTTS_MODEL_VOCAB,
+                              speaker_file_path=self.XTTS_SPEAKERS_PATH,
+                              use_deepspeed=False)
+
+        print("Computing speaker latents...")
+        self.gpt_cond_latent, self.speaker_embedding = self.xtts_model.get_conditioning_latents(audio_path=[self.AUDIO_REFERENCE_PATH])
 
     def web_interface(self):
         import pkg_resources

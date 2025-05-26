@@ -27,10 +27,16 @@ class AudioProcessor:
     Handles audio processing, state management, and result formatting.
     """
     
+    
     def __init__(self):
         """Initialize the audio processor with configuration, models, and state."""
         
         models = WhisperLiveKit()
+
+        # TTS settings
+        self.xtts_model = models.xtts_model
+        self.gpt_cond_latent = models.gpt_cond_latent
+        self.speaker_embedding = models.speaker_embedding
         
         # Audio processing settings
         self.args = models.args
@@ -354,19 +360,60 @@ class AudioProcessor:
         logger.info("Diarization processor task finished.")
 
 
-    async def start_generating_speech(self, new_text):
+    async def start_generating_speech(self, new_text, language="en"):
         """Start generating speech for the given lines."""
         if not new_text:
             return
         
-        # This is a placeholder for actual speech generation logic
-        # In a real implementation, this would interface with a TTS system
-        
-        # Simulate speech generation delay
-        await asyncio.sleep(0.1)
-        
-        logger.info(f"Generating speech for {len(new_text)} lines.")
-        return new_text  # Yield the generated speech text
+        try:
+            logger.info(f"Generating speech for {len(new_text)} lines in {language}.")            
+            
+            # Generate speech for each line
+            audio_data = self.generate_speech_internal(new_text, language)
+            
+            logger.info(f"Speech generated for {len(new_text)} lines in {language}.")            
+            
+            return audio_data
+        except Exception as e:
+            logger.error(f"Error generating speech: {e}", exc_info=True)
+            raise
+    
+    def generate_speech_internal(self, text: str, language: str) -> bytes:
+        """
+        Generates speech audio from the given text using a text-to-speech model.
+        Args:
+            text (str): The text to be converted into speech.
+            language (str): The language code ('ar' for Arabic, 'en' for English).
+        Returns:
+            bytes: Audio data in WAV format.
+        """
+        try:
+            logger.info(f"Generating speech for text: '{text}' in {language}")
+            if not text.strip():
+                raise ValueError("Text cannot be empty.")
+            if language not in ["ar", "en"]:
+                raise ValueError(f"Unsupported language: {language}")
+
+            start_time = time.time()  # Start time logging
+
+            out = self.xtts_model.inference(
+              text, language, self.gpt_cond_latent, self.speaker_embedding,
+              temperature=0.86
+            )
+
+            wav_tensor = torch.tensor(out["wav"]).unsqueeze(0)
+            buffer = io.BytesIO()
+            torchaudio.save(buffer, wav_tensor, 24000, format="wav")
+            buffer.seek(0)
+
+            end_time = time.time()  # End time logging
+            elapsed_time = end_time - start_time
+            logger.info(f"Speech generation completed in {elapsed_time:.4f} seconds.")
+            return buffer.read()
+        except Exception as e:
+            logger.error("Speech generation error", exc_info=True)
+            raise RuntimeError(f"Speech generation failed: {str(e)}")
+
 
     async def results_formatter(self):
         """Format processing results for output."""
