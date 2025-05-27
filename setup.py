@@ -16,6 +16,8 @@ setup(
         "faster-whisper",
         "uvicorn",
         "websockets",
+        "coqui-tts",
+        "torch"
     ],
     extras_require={
         "diarization": ["diart"],
