@@ -361,7 +361,7 @@ class AudioProcessor:
         """Generate speech from text using the XTTS model."""
         if not self.xtts_model:
             logger.error("XTTS model is not initialized.")
-            return None
+            raise RuntimeError("XTTS model is not initialized. Please check your configuration.")
         
         try:
             import time
@@ -400,7 +400,7 @@ class AudioProcessor:
                 yield pcm_bytes
         except Exception as e:
             logger.error(f"Error generating speech: {e}")
-            return None
+            raise RuntimeError(f"Error generating speech: {e}")
 
 
     async def results_formatter(self):
