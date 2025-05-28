@@ -394,6 +394,13 @@
                 websocket.onmessage = (event) => {
                     const data = JSON.parse(event.data);
                     
+                    if (data.type === "tts") {
+                        const { speech_bytes } = data
+                        console.log("Received TTS message, but TTS is not implemented in this demo.");
+                        console.log("TTS data:", speech_bytes);
+                        return;
+                    }
+
                     // Check for status messages
                     if (data.type === "ready_to_stop") {
                         console.log("Ready to stop received, finalizing display and closing WebSocket.");

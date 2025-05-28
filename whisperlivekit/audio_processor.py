@@ -31,6 +31,10 @@ class AudioProcessor:
         """Initialize the audio processor with configuration, models, and state."""
         
         models = WhisperLiveKit()
+
+        self.xtts_model = models.xtts_model
+        self.gpt_cond_latent = models.gpt_cond_latent
+        self.speaker_embedding = models.speaker_embedding
         
         # Audio processing settings
         self.args = models.args
@@ -352,6 +356,51 @@ class AudioProcessor:
                 if 'pcm_array' in locals() and pcm_array is not SENTINEL:
                     self.diarization_queue.task_done()
         logger.info("Diarization processor task finished.")
+
+    async def generate_speech(self, text, language="ar"):
+        """Generate speech from text using the XTTS model."""
+        if not self.xtts_model:
+            logger.error("XTTS model is not initialized.")
+            return None
+        
+        try:
+            import time
+            # Generate speech
+            print("Inference...")
+            t0 = time.time()
+            
+            chunks = self.xtts_model.inference_stream(
+                text,
+                language,
+                self.gpt_cond_latent,
+                self.speaker_embedding
+            )
+
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    print(f"Time to first chunk: {time.time() - t0}")
+                print(f"Received chunk {i} of audio length {chunk.shape[-1]}")
+                print(type(chunk), chunk.dtype, chunk.shape, chunk.device)
+
+                # 1) bring to CPU and detach
+                cpu_chunk = chunk.detach().cpu()
+
+                # 2) optionally squeeze off any leading channel dim
+                #    (e.g. [1, N] → [N])
+                cpu_chunk = cpu_chunk.squeeze()
+
+                # 3) convert to NumPy
+                np_chunk = cpu_chunk.numpy()
+
+                # 4) to raw bytes
+                pcm_bytes = np_chunk.tobytes()
+
+                # now send those bytes to the client
+                print("Yielding PCM bytes of length:", len(pcm_bytes))
+                yield pcm_bytes
+        except Exception as e:
+            logger.error(f"Error generating speech: {e}")
+            return None
 
 
     async def results_formatter(self):

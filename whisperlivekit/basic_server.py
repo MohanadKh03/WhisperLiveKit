@@ -39,10 +39,15 @@ async def get():
     return HTMLResponse(kit.web_interface())
 
 
-async def handle_websocket_results(websocket, results_generator):
+async def handle_websocket_results(websocket, results_generator, audio_processor):
     """Consumes results from the audio processor and sends them via WebSocket."""
     try:
         async for response in results_generator:
+            # Start generating speech using TTS in a separate thread/task
+            logger.info(f"Received response from results generator: {response}")
+            asyncio.to_thread(handle_websocket_tts_results(websocket, audio_processor, response["buffer_transcription"]))
+            # Send the response to the WebSocket client
+            logger.info(f"Sending response to WebSocket: {response}")
             await websocket.send_json(response)
         # when the results_generator finishes it means all audio has been processed
         logger.info("Results generator finished. Sending 'ready_to_stop' to client.")
@@ -52,6 +57,22 @@ async def handle_websocket_results(websocket, results_generator):
     except Exception as e:
         logger.warning(f"Error in WebSocket results handler: {e}")
 
+
+async def handle_websocket_tts_results(websocket, audio_processor, new_text):
+    """Consumes TTS results and sends them via WebSocket."""
+    try:
+        logger.info(f"Handling TTS results for new text: {new_text}")
+        tts_results_generator = await audio_processor.generate_speech(new_text, language="ar")
+        async for pcm_bytes in tts_results_generator:
+            # Convert PCM bytes to base64 for WebSocket transmission
+            base64_bytes = pcm_bytes.decode('utf-8')
+            logger.info(f"Sending TTS result of length {len(base64_bytes)} bytes to WebSocket.")
+            await websocket.send_json({"type": "tts", "speech_bytes": base64_bytes})
+            logger.info("TTS result sent successfully.")
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected while handling TTS results (client likely closed connection).")
+    except Exception as e:
+        logger.warning(f"Error in WebSocket TTS results handler: {e}")
 
 @app.websocket("/asr")
 async def websocket_endpoint(websocket: WebSocket):
