@@ -59,15 +59,18 @@ async def handle_websocket_results(websocket, results_generator, audio_processor
 
 
 async def handle_websocket_tts_results(websocket, audio_processor, new_text):
+
+    import base64
     """Consumes TTS results and sends them via WebSocket."""
     try:
         logger.info(f"Handling TTS results for new text: {new_text}")
-        tts_results_generator = await audio_processor.generate_speech(new_text, language="ar")
+        tts_results_generator = audio_processor.generate_speech(new_text, language="ar")
         async for pcm_bytes in tts_results_generator:
             # Convert PCM bytes to base64 for WebSocket transmission
-            base64_bytes = pcm_bytes.decode('utf-8')
-            logger.info(f"Sending TTS result of length {len(base64_bytes)} bytes to WebSocket.")
-            await websocket.send_json({"type": "tts", "speech_bytes": base64_bytes})
+            baseb64_bytes = base64.b64encode(pcm_bytes)
+            decoded_bytes = baseb64_bytes.decode('utf-8')
+            logger.info(f"Sending TTS result of length {len(decoded_bytes)} bytes to WebSocket.")
+            await websocket.send_json({"type": "tts", "speech_bytes": decoded_bytes})
             logger.info("TTS result sent successfully.")
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected while handling TTS results (client likely closed connection).")
