@@ -45,7 +45,7 @@ async def handle_websocket_results(websocket, results_generator, audio_processor
         async for response in results_generator:
             # Start generating speech using TTS in a separate thread/task
             logger.info(f"Received response from results generator: {response}")
-            asyncio.to_thread(handle_websocket_tts_results(websocket, audio_processor, response["buffer_transcription"]))
+            asyncio.create_task(handle_websocket_tts_results(websocket, audio_processor, response["buffer_transcription"]))
             # Send the response to the WebSocket client
             logger.info(f"Sending response to WebSocket: {response}")
             await websocket.send_json(response)
