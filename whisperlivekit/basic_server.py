@@ -82,7 +82,7 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.info("WebSocket connection opened.")
             
     results_generator = await audio_processor.create_tasks()
-    websocket_task = asyncio.create_task(handle_websocket_results(websocket, results_generator))
+    websocket_task = asyncio.create_task(handle_websocket_results(websocket, results_generator, audio_processor))
 
     try:
         while True:
