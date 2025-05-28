@@ -202,7 +202,22 @@ class WhisperLiveKit:
 
         if os.path.exists(self.XTTS_MODEL_CONFIG) and os.path.exists(self.XTTS_MODEL_PTH) and os.path.exists(self.XTTS_MODEL_VOCAB) and os.path.exists(self.XTTS_SPEAKERS_PATH):
             print("XTTS model files already exist. Skipping download.")
+            print("Loading XTTS model...")
+            self.xtts_config = XttsConfig()
+            self.xtts_config.load_json(self.XTTS_MODEL_CONFIG)
+            self.xtts_model = Xtts.init_from_config(self.xtts_config)
+
+
+            self.xtts_model.load_checkpoint(self.xtts_config, checkpoint_path=self.XTTS_MODEL_PTH,
+                                vocab_path=self.XTTS_MODEL_VOCAB,
+                                speaker_file_path=self.XTTS_SPEAKERS_PATH,
+                                use_deepspeed=False)
+
+            print("Computing speaker latents...")
+            self.gpt_cond_latent, self.speaker_embedding = self.xtts_model.get_conditioning_latents(audio_path=[self.AUDIO_REFERENCE_PATH])
+
             self.warmup_xtts()
+
             print("XTTS model is ready.")
             return
 
