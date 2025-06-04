@@ -398,12 +398,6 @@
           websocket.onmessage = (event) => {
             const data = JSON.parse(event.data);
 
-            if (data.event_type == "tts") {
-                const { speech } = data
-                console.log("RECEIVED SPEECH IN PARALLEL" + speech)
-                return;
-            }
-
             // Check for status messages
             if (data.type === "ready_to_stop") {
               console.log(
@@ -441,7 +435,14 @@
               buffer_diarization = "",
               remaining_time_transcription = 0,
               remaining_time_diarization = 0,
+              audio_bytes = "" 
+              // assuming the incoming  audio_bytes is new_audio_bytes = base64.b64encode(new_audio_bytes.encode("utf-8")).decode("utf-8")
+              // which should get decoded
             } = data;
+
+            if (audio_bytes != "") {
+              print("HERE IS: " + audio_bytes)
+            }
 
             renderLinesWithBuffer(
               lines,

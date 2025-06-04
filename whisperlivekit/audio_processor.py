@@ -9,6 +9,7 @@ from datetime import timedelta
 from whisperlivekit.timed_objects import ASRToken
 from whisperlivekit.whisper_streaming_custom.whisper_online import online_factory
 from whisperlivekit.core import WhisperLiveKit
+import base64
 
 # Set up logging once
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -62,6 +63,10 @@ class AudioProcessor:
         self.beg_loop = time()
         self.sep = " "  # Default separator
         self.last_response_content = ""
+        
+        # TTS state management
+        self.tts_output = bytes()
+        self.tts_queue = asyncio.Queue()
         
         # Models and processing
         self.asr = models.asr
@@ -140,6 +145,13 @@ class AudioProcessor:
             except Exception as e2:
                 logger.critical(f"Failed to restart FFmpeg process on second attempt: {e2}")
                 logger.critical(traceback.format_exc())
+
+    async def update_tts_output(self, audio_output_bytes):
+        """Thread-safe update of TTS output."""
+        async with self.lock:
+            self.tts_output = audio_output_bytes
+            logger.debug(f"Updated with the new TTS output with {len(self.tts_output)} bytes.")
+        
 
     async def update_transcription(self, new_tokens, buffer, end_buffer, full_transcription, sep):
         """Thread-safe update of transcription with new data."""
@@ -270,7 +282,34 @@ class AudioProcessor:
             await self.diarization_queue.put(SENTINEL)
             logger.debug("Sentinel put into diarization_queue.")
 
-
+    async def tts_processor(self, tts_language="en"):
+        """Process text-to-speech requests."""
+        while True:
+            try:
+                # Wait for new text to process
+                new_text = await self.tts_queue.get()
+                
+                if not new_text:
+                    logger.warning("Received empty text for TTS processing, skipping.")
+                    self.tts_queue.task_done()
+                    continue
+                
+                # Generate speech
+                audio_data = self.generate_speech_internal(new_text, tts_language)
+                
+                # Send audio data to client or handle it as needed
+                if audio_data:
+                    logger.info(f"Generated TTS audio for {(new_text)} lines in {tts_language}.")
+                    self.update_tts_output(audio_data)
+                
+                self.tts_queue.task_done()
+                
+            except Exception as e:
+                logger.warning(f"Exception in tts_processor: {e}")
+                logger.warning(f"Traceback: {traceback.format_exc()}")
+                if 'new_text' in locals() and new_text is not SENTINEL:
+                    self.tts_queue.task_done()
+        
     async def transcription_processor(self):
         """Process audio chunks for transcription."""
         self.full_transcription = ""
@@ -318,6 +357,7 @@ class AudioProcessor:
                 await self.update_transcription(
                     new_tokens, buffer, end_buffer, self.full_transcription, self.sep
                 )
+                self.tts_output.put_nowait(self.buffer_transcription)  # Send to TTS queue
                 self.transcription_queue.task_done()
                 
             except Exception as e:
@@ -360,24 +400,6 @@ class AudioProcessor:
         logger.info("Diarization processor task finished.")
 
 
-    async def start_generating_speech(self, new_text, language="en"):
-        """Start generating speech for the given lines."""
-        if not new_text:
-            return
-        
-        try:
-            logger.info(f"Generating speech for {len(new_text)} lines in {language}.")            
-            
-            # Generate speech for each line
-            audio_data = self.generate_speech_internal(new_text, language)
-            
-            logger.info(f"Speech generated for {len(new_text)} lines in {language}.")            
-            
-            return audio_data
-        except Exception as e:
-            logger.error(f"Error generating speech: {e}", exc_info=True)
-            raise
-    
     def generate_speech_internal(self, text: str, language: str) -> bytes:
         """
         Generates speech audio from the given text using a text-to-speech model.
@@ -500,8 +522,18 @@ class AudioProcessor:
                                   f" | {buffer_transcription} | {buffer_diarization}"
                 
                 if response_content != self.last_response_content and (lines or buffer_transcription or buffer_diarization):
+                    
+                    new_audio_bytes = self.tts_output
+                    if new_audio_bytes:
+                        logger.debug(f"New TTS output size: {len(new_audio_bytes)} bytes.")
+                        new_audio_bytes = base64.b64encode(new_audio_bytes.encode("utf-8")).decode("utf-8")
+                    else:
+                        new_audio_bytes = None
+                    response["audio_bytes"] = new_audio_bytes
+
                     yield response
                     self.last_response_content = response_content
+                    self.tts_output = bytes()  # Reset TTS output after sending
                 
                 # Check for termination condition
                 if self.is_stopping:
@@ -523,7 +555,7 @@ class AudioProcessor:
                 logger.warning(f"Traceback: {traceback.format_exc()}")
                 await asyncio.sleep(0.5)  # Back off on error
         
-    async def create_tasks(self):
+    async def create_tasks(self, tts_language="en"):
         """Create and start processing tasks."""
         self.all_tasks_for_cleanup = []
         processing_tasks_for_watchdog = []
@@ -538,6 +570,8 @@ class AudioProcessor:
             self.all_tasks_for_cleanup.append(self.diarization_task)
             processing_tasks_for_watchdog.append(self.diarization_task)
         
+        self.tts_task = asyncio.create_task(self.tts_processor(tts_language))
+
         self.ffmpeg_reader_task = asyncio.create_task(self.ffmpeg_stdout_reader())
         self.all_tasks_for_cleanup.append(self.ffmpeg_reader_task)
         processing_tasks_for_watchdog.append(self.ffmpeg_reader_task)

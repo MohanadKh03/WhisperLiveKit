@@ -43,9 +43,6 @@ async def handle_websocket_results(websocket, results_generator, audio_processor
     """Consumes results from the audio processor and sends them via WebSocket."""
     try:
         async for response in results_generator:
-            logger.info(f"Received response from results generator: {response}")
-            logger.info(f"Sending generate tts stuff to client")
-            asyncio.create_task(handle_tts_websocket_results(websocket=websocket, new_text=response["buffer_transcription"], audio_processor=audio_processor))
             await websocket.send_json(response)
         # when the results_generator finishes it means all audio has been processed
         logger.info("Results generator finished. Sending 'ready_to_stop' to client.")
@@ -75,7 +72,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection opened.")
             
-    results_generator = await audio_processor.create_tasks()
+    results_generator = await audio_processor.create_tasks(tts_language="ar")
     websocket_task = asyncio.create_task(handle_websocket_results(websocket, results_generator, audio_processor))
 
     try:

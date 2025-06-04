@@ -191,43 +191,69 @@ class WhisperLiveKit:
         self.install_xtts_model()
 
         WhisperLiveKit._initialized = True
+    
+    def add_speaker_audio_metadata(self, audio_path):
+        """
+        Adds a new speaker to the XTTS model.
+        
+        :param speaker_name: Name of the speaker to add.
+        :param audio_path: Path to the audio file for the speaker.
+        """
+        if not os.path.exists(audio_path):
+            raise FileNotFoundError(f"Audio file {audio_path} does not exist. Cannot add speaker.")
+        
+        print(f"Adding speaker with audio from {audio_path}...")
+        
+        # Compute speaker embedding
+        self.gpt_cond_latent, self.speaker_embedding = self.xtts_model.get_conditioning_latents(audio_path=[audio_path])
+        
+        print(f"Speaker added successfully.")
 
     def install_xtts_model(self):
-        
+        import os
         from TTS.utils.manage import ModelManager
 
-        import os
-
-        # # Define the path where XTTS v2.0.1 files will be downloaded
         CHECKPOINTS_OUT_PATH = os.path.join(self.OUT_PATH, "XTTS_model_files/")
         os.makedirs(CHECKPOINTS_OUT_PATH, exist_ok=True)
 
-        # Download XTTS v2.0 checkpoint if needed
-        TOKENIZER_FILE_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/vocab.json"
-        XTTS_CHECKPOINT_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/model.pth"
-        XTTS_SPEAKERS_PATH_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/speakers_xtts.pth"
-        XTTS_CONFIG_PATH_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/config.json"
+        # Paths to required files
+        config_path = self.XTTS_MODEL_CONFIG
+        model_path = self.XTTS_MODEL_PTH
+        vocab_path = self.XTTS_MODEL_VOCAB
+        speakers_path = self.XTTS_SPEAKERS_PATH
 
-        # download XTTS v2.0 files if needed
+        # Check if all required files exist
+        required_files = [config_path, model_path, vocab_path, speakers_path]
+        if all(os.path.exists(f) for f in required_files):
+            print("XTTS model files found. Loading model...")
+        else:
+            print("XTTS model files not found. Downloading...")
+            TOKENIZER_FILE_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/vocab.json"
+            XTTS_CHECKPOINT_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/model.pth"
+            XTTS_SPEAKERS_PATH_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/speakers_xtts.pth"
+            XTTS_CONFIG_PATH_LINK = "https://huggingface.co/MazenSamehR/XTTSEG1.4/resolve/main/config.json"
 
-        ModelManager._download_model_files(
-            [TOKENIZER_FILE_LINK, XTTS_CHECKPOINT_LINK, XTTS_SPEAKERS_PATH_LINK, XTTS_CONFIG_PATH_LINK], CHECKPOINTS_OUT_PATH, progress_bar=False
-        )
+            ModelManager._download_model_files(
+                [TOKENIZER_FILE_LINK, XTTS_CHECKPOINT_LINK, XTTS_SPEAKERS_PATH_LINK, XTTS_CONFIG_PATH_LINK],
+                CHECKPOINTS_OUT_PATH,
+                progress_bar=False
+            )
 
-        
         print("Loading XTTS model...")
         self.xtts_config = XttsConfig()
-        self.xtts_config.load_json(self.XTTS_MODEL_CONFIG)
+        self.xtts_config.load_json(config_path)
         self.xtts_model = Xtts.init_from_config(self.xtts_config)
 
+        self.xtts_model.load_checkpoint(
+            self.xtts_config,
+            checkpoint_path=model_path,
+            vocab_path=vocab_path,
+            speaker_file_path=speakers_path,
+            use_deepspeed=False
+        )
+        self.add_speaker_audio_metadata(self.AUDIO_REFERENCE_PATH)
 
-        self.xtts_model.load_checkpoint(self.xtts_config, checkpoint_path=self.XTTS_MODEL_PTH,
-                              vocab_path=self.XTTS_MODEL_VOCAB,
-                              speaker_file_path=self.XTTS_SPEAKERS_PATH,
-                              use_deepspeed=False)
-
-        print("Computing speaker latents...")
-        self.gpt_cond_latent, self.speaker_embedding = self.xtts_model.get_conditioning_latents(audio_path=[self.AUDIO_REFERENCE_PATH])
+        
 
     def web_interface(self):
         import pkg_resources
