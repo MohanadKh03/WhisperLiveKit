@@ -63,7 +63,9 @@ class TranscriptionEngine:
             config_dict['transcription'] = not kwargs['no_transcription']
         if 'no_vad' in kwargs:
             config_dict['vad'] = not kwargs['no_vad']
-        
+        if 'target_language' in kwargs:
+            config_dict['target_language'] = kwargs['target_language']
+        config_dict.pop('target_language', None)
         config_dict.pop('no_transcription', None)
         config_dict.pop('no_vad', None)
 

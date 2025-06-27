@@ -130,10 +130,10 @@ class FasterWhisperASR(ASRBase):
         )
         return model
 
-    def transcribe(self, audio: np.ndarray, init_prompt: str = "") -> list:
+    def transcribe(self, audio: np.ndarray, init_prompt: str = "", language=None) -> list:
         segments, info = self.model.transcribe(
             audio,
-            language=self.original_language,
+            language=language or self.original_language,
             initial_prompt=init_prompt,
             beam_size=5,
             word_timestamps=True,

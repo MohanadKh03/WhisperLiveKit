@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from whisperlivekit import TranscriptionEngine, AudioProcessor, get_web_interface_html, parse_args
 import asyncio
 import logging
+import json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logging.getLogger().setLevel(logging.WARNING)
@@ -61,7 +62,18 @@ async def websocket_endpoint(websocket: WebSocket):
             
     results_generator = await audio_processor.create_tasks()
     websocket_task = asyncio.create_task(handle_websocket_results(websocket, results_generator))
+    # Receive config message
+    config_msg = await websocket.receive_text()
+    try:
+        config = json.loads(config_msg)
+        assert config["type"] == "config"
+        mode = config.get("mode")
+        target_language = config.get("target_language")
+        logger.info(f"Received config: mode={mode}, target_language={target_language}")
+        audio_processor.set_target_language(target_language)  # <-- Add this line
 
+    except Exception as e:
+        logger.warning(f"Failed to parse config: {e}")
     try:
         while True:
             message = await websocket.receive_bytes()

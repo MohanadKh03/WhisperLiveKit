@@ -194,6 +194,10 @@ class OnlineASRProcessor:
         return self.concatenate_tokens(self.transcript_buffer.buffer)
         
 
+    def set_target_language(self, lan):
+        """Set the target language for ASR (if supported)."""
+        self.target_language = lan
+
     def process_iter(self) -> Tuple[List[ASRToken], float]:
         """
         Processes the current audio buffer.
@@ -205,7 +209,15 @@ class OnlineASRProcessor:
         logger.debug(
             f"Transcribing {len(self.audio_buffer)/self.SAMPLING_RATE:.2f} seconds from {self.buffer_time_offset:.2f}"
         )
-        res = self.asr.transcribe(self.audio_buffer, init_prompt=prompt_text)
+        
+        lan = getattr(self, "target_language", None)
+        if lan in ("ar", "en"):
+            logger.debug(f"Transcribing with target language: {lan}")
+            res = self.asr.transcribe(self.audio_buffer, init_prompt=prompt_text, language=lan)
+        else:
+            logger.debug("Transcribing with autodetect language")
+            res = self.asr.transcribe(self.audio_buffer, init_prompt=prompt_text)
+
         tokens = self.asr.ts_words(res)
         self.transcript_buffer.insert(tokens, self.buffer_time_offset)
         committed_tokens = self.transcript_buffer.flush()

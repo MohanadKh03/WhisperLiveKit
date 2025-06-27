@@ -600,6 +600,17 @@ class AudioProcessor:
             self.diarization.close()
         logger.info("AudioProcessor cleanup complete.")
 
+    def set_target_language(self, target_language):
+        """Set the target language for transcription."""
+        if hasattr(self, "online") and self.online:
+            if hasattr(self.online, "set_target_language"):
+                self.online.set_target_language(target_language)
+                logger.info(f"Target language set to: {target_language}")
+            else:
+                logger.warning("Online processor does not support setting target language dynamically.")
+        else:
+            logger.warning("Online ASR not initialized, cannot set target language.")
+
 
     async def process_audio(self, message):
         """Process incoming audio data."""
